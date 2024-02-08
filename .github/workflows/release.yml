@@ -20,4 +20,5 @@ jobs:
                   ref: ${{ github.ref }}
                   base: ${{ matrix.base }}
                   tag: ${{ matrix.tag }}
-              secrets: inherit
+                  docker_username: ${{ secrets.DOCKER_USERNAME }}
+                  docker_token: ${{ secrets.DOCKER_TOKEN }}
