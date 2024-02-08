@@ -4,24 +4,22 @@ on:
     workflow_dispatch:
 
 jobs:
-    call-build-image:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                include:
-                    - base: default
-                      tag: latest
-                    - base: no-hwloc
-                      tag: no-hwloc
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v3
+    build-image-default:
+        uses: ./.github/workflows/build-image.yml
+        with:
+            ref: ${{ github.ref }}
+            base: default
+            tag: latest
+            docker_username: ${{ secrets.DOCKER_USERNAME }}
+            docker_token: ${{ secrets.DOCKER_TOKEN }}
+        secrets: inherit
 
-            - name: Call Build Image Workflow
-              uses: ./.github/workflows/build-image.yml
-              with:
-                  ref: ${{ github.ref }}
-                  base: ${{ matrix.base }}
-                  tag: ${{ matrix.tag }}
-                  docker_username: ${{ secrets.DOCKER_USERNAME }}
-                  docker_token: ${{ secrets.DOCKER_TOKEN }}
+    build-image-no-hwloc:
+        uses: ./.github/workflows/build-image.yml
+        with:
+            ref: ${{ github.ref }}
+            base: no-hwloc
+            tag: no-hwloc
+            docker_username: ${{ secrets.DOCKER_USERNAME }}
+            docker_token: ${{ secrets.DOCKER_TOKEN }}
+        secrets: inherit
