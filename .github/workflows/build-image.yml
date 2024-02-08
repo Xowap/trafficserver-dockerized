@@ -36,5 +36,4 @@ jobs:
               with:
                   push: true
                   tags: xowap/trafficserver:${{ inputs.tag }}
-                  build-args:
-                      BASE_IMAGE: ${{ inputs.base }}
+                  build-args: BASE_IMAGE=${{ inputs.base }}
