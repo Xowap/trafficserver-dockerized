@@ -14,6 +14,9 @@ jobs:
                     - base: no-hwloc
                       tag: no-hwloc
         steps:
+            - name: Checkout
+              uses: actions/checkout@v3
+
             - name: Call Build Image Workflow
               uses: ./.github/workflows/build-image.yml
               with:
