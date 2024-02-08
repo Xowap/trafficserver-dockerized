@@ -1,0 +1,22 @@
+name: Release
+
+on: workflow_dispatch
+
+jobs:
+    call-build-image:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                include:
+                    - base: default
+                      tag: latest
+                    - base: no-hwloc
+                      tag: no-hwloc
+        steps:
+            - name: Call Build Image Workflow
+              uses: ./.github/workflows/build-image.yml
+              with:
+                  ref: ${{ github.ref }}
+                  base: ${{ matrix.base }}
+                  tag: ${{ matrix.tag }}
+              secrets: inherit
