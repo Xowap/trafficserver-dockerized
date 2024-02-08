@@ -10,8 +10,7 @@ jobs:
             ref: ${{ github.ref }}
             base: default
             tag: latest
-        secrets:
-            inherit: true
+        secrets: inherit
 
     build-image-no-hwloc:
         uses: ./.github/workflows/build-image.yml
@@ -19,5 +18,4 @@ jobs:
             ref: ${{ github.ref }}
             base: no-hwloc
             tag: no-hwloc
-        secrets:
-            inherit: true
+        secrets: inherit
