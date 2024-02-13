@@ -35,6 +35,6 @@ jobs:
               uses: docker/build-push-action@v3
               with:
                   push: true
-                  platforms: linux/amd64,linux/arm64
+                  platforms: linux/amd64,linux/arm64/v8
                   tags: xowap/trafficserver:${{ inputs.tag }}
                   build-args: BASE_IMAGE=${{ inputs.base }}
