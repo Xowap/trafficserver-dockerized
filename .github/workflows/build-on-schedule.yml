@@ -85,6 +85,7 @@ jobs:
             ngtcp2_version: ${{ matrix.ngtcp2_version }}
             nghttp2_version: ${{ matrix.nghttp2_version }}
             curl_version: ${{ matrix.curl_version }}
+            ubuntu_version: ${{ matrix.ubuntu_version }}
         secrets: inherit
 
     sentry-end:
