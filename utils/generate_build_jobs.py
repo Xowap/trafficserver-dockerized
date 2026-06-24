@@ -5,6 +5,8 @@ import sys
 import os
 import shutil
 import subprocess
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 
 CLONE_PATH = "/tmp/ats-clone-metadata"
@@ -22,6 +24,21 @@ def run_git_cmd(args, cwd=None):
     except subprocess.CalledProcessError as e:
         sys.stderr.write(f"Git command failed: {' '.join(e.cmd)}\nError: {e.stderr}\n")
         return None
+
+def get_existing_local_tags():
+    """
+    Fetches the list of existing tags for xowap/trafficserver from Docker Hub.
+    """
+    url = "https://hub.docker.com/v2/repositories/xowap/trafficserver/tags?page_size=100"
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    try:
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
+            results = data.get('results', [])
+            return {r['name'] for r in results}
+    except Exception as e:
+        sys.stderr.write(f"Error fetching local tags from Docker Hub (repo may be empty or new): {e}\n")
+        return set()
 
 def get_recent_git_tags():
     """
@@ -86,7 +103,6 @@ def fetch_and_parse_dockerfile(tag):
         sys.stderr.write(f"contrib/docker/ubuntu directory not found on tag {tag}. Skipping.\n")
         return None
 
-    # Sort subdirectories alphabetically and take the last/newest one (e.g. noble, oracular, plucky, etc.)
     ubuntu_releases = [d.strip() for d in dirs_raw.splitlines() if d.strip()]
     ubuntu_releases.sort()
     
@@ -164,12 +180,26 @@ def fetch_and_parse_dockerfile(tag):
     return versions
 
 def main():
+    # Force rebuild option (can be set via environment variable if triggered manually)
+    force_rebuild = os.environ.get("FORCE_REBUILD", "false").lower() == "true"
+
+    existing_local_tags = set() if force_rebuild else get_existing_local_tags()
+    sys.stderr.write(f"Existing tags on xowap/trafficserver: {existing_local_tags}\n")
+
     recent_tags = get_recent_git_tags()
     sys.stderr.write(f"ATS Git tags updated in past 6 months: {recent_tags}\n")
     
     jobs = []
     
     for i, tag in enumerate(recent_tags):
+        # Check if we should skip this tag because it's already built for both variants
+        default_tag_exists = tag in existing_local_tags
+        nohwloc_tag_exists = f"{tag}-no-hwloc" in existing_local_tags
+        
+        if default_tag_exists and nohwloc_tag_exists:
+            sys.stderr.write(f"Tag {tag} and its no-hwloc variant already exist on Docker Hub. Skipping rebuild.\n")
+            continue
+
         job_vars = fetch_and_parse_dockerfile(tag)
         if job_vars is None:
             continue
@@ -179,6 +209,14 @@ def main():
         
         # We need two variants for each tag: default and no-hwloc
         for base in ["default", "no-hwloc"]:
+            # Skip building individual variant if it already exists
+            if base == "default" and default_tag_exists:
+                sys.stderr.write(f"Variant {tag} (default) already exists. Skipping.\n")
+                continue
+            if base == "no-hwloc" and nohwloc_tag_exists:
+                sys.stderr.write(f"Variant {tag} (no-hwloc) already exists. Skipping.\n")
+                continue
+
             tag_list = []
             if base == "default":
                 tag_list.append(f"xowap/trafficserver:{tag}")
@@ -208,8 +246,8 @@ def main():
     if os.path.exists(CLONE_PATH):
         shutil.rmtree(CLONE_PATH)
 
-    # Output JSON array of jobs
-    print(json.dumps({"include": jobs}))
+    # Output JSON array of jobs compactly (single line) for GHA output compatibility
+    print(json.dumps({"include": jobs}, separators=(',', ':')))
 
 if __name__ == "__main__":
     main()
