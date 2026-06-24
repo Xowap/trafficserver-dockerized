@@ -9,7 +9,7 @@ jobs:
         with:
             ref: ${{ github.ref }}
             base: default
-            tag: latest
+            tag: xowap/trafficserver:latest
         secrets: inherit
 
     build-image-no-hwloc:
@@ -17,5 +17,5 @@ jobs:
         with:
             ref: ${{ github.ref }}
             base: no-hwloc
-            tag: no-hwloc
+            tag: xowap/trafficserver:no-hwloc
         secrets: inherit
