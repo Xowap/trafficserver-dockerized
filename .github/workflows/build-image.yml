@@ -12,6 +12,33 @@ on:
             tag:
                 required: true
                 type: string
+            ats_version:
+                required: false
+                type: string
+            go_version:
+                required: false
+                type: string
+            llvm_version:
+                required: false
+                type: string
+            quiche_version:
+                required: false
+                type: string
+            nghttp3_version:
+                required: false
+                type: string
+            ngtcp2_version:
+                required: false
+                type: string
+            nghttp2_version:
+                required: false
+                type: string
+            curl_version:
+                required: false
+                type: string
+            ubuntu_version:
+                required: false
+                type: string
 
 jobs:
     docker:
@@ -37,4 +64,14 @@ jobs:
                   push: true
                   platforms: linux/amd64,linux/arm64/v8
                   tags: xowap/trafficserver:${{ inputs.tag }}
-                  build-args: BASE_IMAGE=${{ inputs.base }}
+                  build-args: |
+                      BASE_IMAGE=${{ inputs.base }}
+                      ATS_VERSION=${{ inputs.ats_version }}
+                      GO_VERSION=${{ inputs.go_version }}
+                      LLVM_VERSION=${{ inputs.llvm_version }}
+                      QUICHE_VERSION=${{ inputs.quiche_version }}
+                      NGHTTP3_VERSION=${{ inputs.nghttp3_version }}
+                      NGTCP2_VERSION=${{ inputs.ngtcp2_version }}
+                      NGHTTP2_VERSION=${{ inputs.nghttp2_version }}
+                      CURL_VERSION=${{ inputs.curl_version }}
+                      UBUNTU_VERSION=${{ inputs.ubuntu_version }}

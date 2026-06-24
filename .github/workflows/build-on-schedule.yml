@@ -1,0 +1,126 @@
+name: Build on schedule
+
+on:
+    schedule:
+        - cron: "0 */3 * * *"
+    workflow_dispatch:
+
+jobs:
+    sentry-start:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Send Sentry in_progress
+              env:
+                  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+              run: |
+                  if [ -z "$SENTRY_DSN" ]; then
+                      echo "SENTRY_DSN is not set. Skipping Sentry check-in."
+                      exit 0
+                  fi
+                  if [[ $SENTRY_DSN =~ https://([^@]+)@([^/]+)/(.+) ]]; then
+                      KEY="${BASH_REMATCH[1]}"
+                      HOST="${BASH_REMATCH[2]}"
+                      ID="${BASH_REMATCH[3]}"
+                      SENTRY_CRONS="https://$HOST/api/$ID/cron/build-on-schedule/$KEY/"
+
+                      echo "Sending 'in_progress' check-in to Sentry for 'build-on-schedule'..."
+
+                      curl -X POST "${SENTRY_CRONS}" \
+                          -s -S \
+                          --header 'Content-Type: application/json' \
+                          --data-raw '{
+                            "monitor_config": {
+                              "schedule": {"type": "crontab", "value": "0 */3 * * *"},
+                              "checkin_margin": 180,
+                              "max_runtime": 120,
+                              "timezone": "UTC",
+                              "failure_issue_threshold": 3,
+                              "recovery_threshold": 1
+                            },
+                            "status": "in_progress"
+                          }'
+                  else
+                      echo "Could not parse SENTRY_DSN format."
+                      exit 1
+                  fi
+
+    generate-matrix:
+        needs: sentry-start
+        runs-on: ubuntu-latest
+        outputs:
+            matrix: ${{ steps.set-matrix.outputs.matrix }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v3
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                python-version: '3.10'
+
+            - name: Generate build matrix
+              id: set-matrix
+              run: |
+                chmod +x utils/generate_build_jobs.py
+                MATRIX=$(python3 utils/generate_build_jobs.py)
+                echo "Matrix output:"
+                echo "$MATRIX"
+                # Output to GitHub Actions step outputs
+                echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+    call-build-image:
+        needs: [sentry-start, generate-matrix]
+        strategy:
+            matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+        uses: ./.github/workflows/build-image.yml
+        with:
+            ref: ${{ github.ref }}
+            base: ${{ matrix.base }}
+            tag: ${{ matrix.tag }}
+            ats_version: ${{ matrix.ats_version }}
+            go_version: ${{ matrix.go_version }}
+            llvm_version: ${{ matrix.llvm_version }}
+            quiche_version: ${{ matrix.quiche_version }}
+            nghttp3_version: ${{ matrix.nghttp3_version }}
+            ngtcp2_version: ${{ matrix.ngtcp2_version }}
+            nghttp2_version: ${{ matrix.nghttp2_version }}
+            curl_version: ${{ matrix.curl_version }}
+        secrets: inherit
+
+    sentry-end:
+        needs: [sentry-start, call-build-image]
+        if: always()
+        runs-on: ubuntu-latest
+        steps:
+            - name: Send Sentry Result
+              env:
+                  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+              run: |
+                  if [ -z "$SENTRY_DSN" ]; then
+                      echo "SENTRY_DSN is not set. Skipping Sentry check-in."
+                      exit 0
+                  fi
+                  if [[ $SENTRY_DSN =~ https://([^@]+)@([^/]+)/(.+) ]]; then
+                      KEY="${BASH_REMATCH[1]}"
+                      HOST="${BASH_REMATCH[2]}"
+                      ID="${BASH_REMATCH[3]}"
+                      SENTRY_CRONS="https://$HOST/api/$ID/cron/build-on-schedule/$KEY/"
+
+                      # Determine build result
+                      if [ "${{ needs.call-build-image.result }}" = "success" ]; then
+                          STATUS="ok"
+                      else
+                          STATUS="error"
+                      fi
+
+                      echo "Sending '${STATUS}' check-in to Sentry for 'build-on-schedule'..."
+                      curl -X POST "${SENTRY_CRONS}" \
+                          -s -S \
+                          --header 'Content-Type: application/json' \
+                          --data-raw "{
+                            \"status\": \"${STATUS}\"
+                          }"
+                  else
+                      echo "Could not parse SENTRY_DSN format."
+                      exit 1
+                  fi

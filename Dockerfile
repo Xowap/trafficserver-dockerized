@@ -1,13 +1,27 @@
 # Global build arguments
 ARG BASE_IMAGE=default
 ARG ATS_VERSION=10.1.0
+ARG GO_VERSION=1.26.2
+ARG LLVM_VERSION=18
+ARG QUICHE_VERSION=0.28.0
+ARG NGHTTP3_VERSION=v1.15.0
+ARG NGTCP2_VERSION=v1.22.1
+ARG NGHTTP2_VERSION=v1.69.0
+ARG CURL_VERSION=curl-8_20_0
+ARG UBUNTU_VERSION=noble
 
 # ----------------- Stage 1: Build Setup (shared by both variants) -----------------
-FROM ubuntu:noble AS build-setup
+FROM ubuntu:${UBUNTU_VERSION} AS build-setup
 
-ARG LLVM_VERSION=18
+ARG LLVM_VERSION
 ARG BASE=/opt
-ARG GO_VERSION=1.26.2
+ARG GO_VERSION
+ARG QUICHE_VERSION
+ARG NGHTTP3_VERSION
+ARG NGTCP2_VERSION
+ARG NGHTTP2_VERSION
+ARG CURL_VERSION
+ARG UBUNTU_VERSION
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -100,7 +114,7 @@ RUN git clone https://boringssl.googlesource.com/boringssl \
 ENV QUICHE_BASE="${BASE}/quiche"
 
 # Build Quiche
-RUN git clone -b 0.28.0 --depth 1 https://github.com/cloudflare/quiche.git \
+RUN git clone -b ${QUICHE_VERSION} --depth 1 https://github.com/cloudflare/quiche.git \
  && cd quiche \
  && QUICHE_BSSL_PATH=${BASE}/boringssl/lib QUICHE_BSSL_LINK_KIND=dylib \
     cargo build -j$(nproc) --package quiche --release --features ffi,pkg-config-meta,qlog \
@@ -120,7 +134,7 @@ ENV CXXFLAGS="-O3"
 ENV PKG_CONFIG_PATH="${BASE}/lib/pkgconfig:${BASE}/boringssl/lib/pkgconfig:${BASE}/quiche/lib/pkgconfig"
 
 # Build nghttp3
-RUN git clone --depth 1 -b v1.15.0 https://github.com/ngtcp2/nghttp3.git \
+RUN git clone --depth 1 -b ${NGHTTP3_VERSION} https://github.com/ngtcp2/nghttp3.git \
  && cd nghttp3 \
  && git submodule update --init \
  && autoreconf -if \
@@ -137,7 +151,7 @@ RUN git clone --depth 1 -b v1.15.0 https://github.com/ngtcp2/nghttp3.git \
  && rm -rf nghttp3
 
 # Build ngtcp2
-RUN git clone --depth 1 -b v1.22.1 https://github.com/ngtcp2/ngtcp2.git \
+RUN git clone --depth 1 -b ${NGTCP2_VERSION} https://github.com/ngtcp2/ngtcp2.git \
  && cd ngtcp2 \
  && autoreconf -if \
  && ./configure \
@@ -155,7 +169,7 @@ RUN git clone --depth 1 -b v1.22.1 https://github.com/ngtcp2/ngtcp2.git \
  && rm -rf ngtcp2
 
 # Build nghttp2
-RUN git clone --depth 1 -b v1.69.0 https://github.com/tatsuhiro-t/nghttp2.git \
+RUN git clone --depth 1 -b ${NGHTTP2_VERSION} https://github.com/tatsuhiro-t/nghttp2.git \
  && cd nghttp2 \
  && git submodule update --init \
  && autoreconf -if \
@@ -174,7 +188,7 @@ RUN git clone --depth 1 -b v1.69.0 https://github.com/tatsuhiro-t/nghttp2.git \
  && rm -rf nghttp2
 
 # Build Curl
-RUN git clone --depth 1 -b curl-8_20_0 https://github.com/curl/curl.git \
+RUN git clone --depth 1 -b ${CURL_VERSION} https://github.com/curl/curl.git \
  && cd curl \
  && autoreconf -fi \
  && ./configure \
@@ -255,7 +269,9 @@ RUN git clone --depth 1 -b ${ATS_VERSION} https://github.com/apache/trafficserve
 
 
 # ----------------- Stage 3a: Base default -----------------
-FROM ubuntu:noble AS base-default
+FROM ubuntu:${UBUNTU_VERSION} AS base-default
+
+ARG UBUNTU_VERSION
 
 # Install runtime dependencies for default variant (includes hwloc)
 RUN apt update \
@@ -288,7 +304,9 @@ COPY --from=build-default /opt /opt
 
 
 # ----------------- Stage 3b: Base no-hwloc -----------------
-FROM ubuntu:noble AS base-no-hwloc
+FROM ubuntu:${UBUNTU_VERSION} AS base-no-hwloc
+
+ARG UBUNTU_VERSION
 
 # Install runtime dependencies for no-hwloc variant (omits hwloc)
 RUN apt update \
