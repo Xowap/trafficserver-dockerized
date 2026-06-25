@@ -213,6 +213,7 @@ ARG ATS_VERSION
 ARG BASE=/opt
 
 RUN git clone --depth 1 -b ${ATS_VERSION} https://github.com/apache/trafficserver.git \
+ && sed -i 's/target_link_libraries(cripts PUBLIC/target_link_libraries(cripts PUBLIC tscore tsutil/' trafficserver/src/cripts/CMakeLists.txt \
  && cmake \
      -Strafficserver \
      -Bbuild \
@@ -244,6 +245,7 @@ ARG ATS_VERSION
 ARG BASE=/opt
 
 RUN git clone --depth 1 -b ${ATS_VERSION} https://github.com/apache/trafficserver.git \
+ && sed -i 's/target_link_libraries(cripts PUBLIC/target_link_libraries(cripts PUBLIC tscore tsutil/' trafficserver/src/cripts/CMakeLists.txt \
  && cmake \
      -Strafficserver \
      -Bbuild \
