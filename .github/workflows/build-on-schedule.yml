@@ -49,6 +49,7 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             matrix: ${{ steps.set-matrix.outputs.matrix }}
+            has_jobs: ${{ steps.set-matrix.outputs.has_jobs }}
         steps:
             - name: Checkout
               uses: actions/checkout@v3
@@ -65,11 +66,18 @@ jobs:
                 MATRIX=$(python3 utils/generate_build_jobs.py)
                 echo "Matrix output:"
                 echo "$MATRIX"
+                # Check if MATRIX is empty (contains no jobs in include array)
+                if [[ "$MATRIX" == *"\"include\":[]"* ]]; then
+                  echo "has_jobs=false" >> $GITHUB_OUTPUT
+                else
+                  echo "has_jobs=true" >> $GITHUB_OUTPUT
+                fi
                 # Output to GitHub Actions step outputs
                 echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
     call-build-image:
         needs: [sentry-start, generate-matrix]
+        if: needs.generate-matrix.outputs.has_jobs == 'true'
         strategy:
             matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
         uses: ./.github/workflows/build-image.yml
@@ -108,7 +116,7 @@ jobs:
                       SENTRY_CRONS="https://$HOST/api/$ID/cron/build-on-schedule/$KEY/"
 
                       # Determine build result
-                      if [ "${{ needs.call-build-image.result }}" = "success" ]; then
+                      if [ "${{ needs.call-build-image.result }}" = "success" ] || [ "${{ needs.call-build-image.result }}" = "skipped" ]; then
                           STATUS="ok"
                       else
                           STATUS="error"
