@@ -189,27 +189,43 @@ def main():
     recent_tags = get_recent_git_tags()
     sys.stderr.write(f"ATS Git tags updated in past 6 months: {recent_tags}\n")
     
+    # Group recent tags by major/minor branch (YY.XX) and find the highest patch for each
+    branch_map = {}
+    for tag in recent_tags:
+        m = re.match(r'^(\d+\.\d+)\.\d+$', tag)
+        if not m:
+            continue
+        branch = m.group(1)
+        if branch not in branch_map:
+            # Since recent_tags is already sorted descending, the first one seen is the highest!
+            branch_map[branch] = tag
+            
+    sys.stderr.write(f"Active branches and their highest tags: {branch_map}\n")
+    
+    # Sort branches descending to determine the overall highest version
+    sorted_branches = sorted(branch_map.keys(), key=lambda b: list(map(int, b.split('.'))), reverse=True)
+    overall_highest_branch = sorted_branches[0] if sorted_branches else None
+    
     jobs = []
     
-    for i, tag in enumerate(recent_tags):
-        # Check if we should skip this tag because it's already built for both variants
+    for branch in sorted_branches:
+        tag = branch_map[branch]
+        is_overall_highest = (branch == overall_highest_branch)
+        
+        # Check if this patch version already exists in our repository
         default_tag_exists = tag in existing_local_tags
         nohwloc_tag_exists = f"{tag}-no-hwloc" in existing_local_tags
         
         if default_tag_exists and nohwloc_tag_exists:
-            sys.stderr.write(f"Tag {tag} and its no-hwloc variant already exist on Docker Hub. Skipping rebuild.\n")
+            sys.stderr.write(f"Branch {branch} is up to date (latest patch {tag} already built). Skipping.\n")
             continue
 
         job_vars = fetch_and_parse_dockerfile(tag)
         if job_vars is None:
             continue
             
-        # For the highest version, we also want to tag it as 'latest' (and 'latest-no-hwloc')
-        is_highest = (i == 0)
-        
-        # We need two variants for each tag: default and no-hwloc
+        # We need two variants for each branch: default and no-hwloc
         for base in ["default", "no-hwloc"]:
-            # Skip building individual variant if it already exists
             if base == "default" and default_tag_exists:
                 sys.stderr.write(f"Variant {tag} (default) already exists. Skipping.\n")
                 continue
@@ -219,12 +235,18 @@ def main():
 
             tag_list = []
             if base == "default":
+                # Push the patch tag (to serve as state marker for next run check)
                 tag_list.append(f"xowap/trafficserver:{tag}")
-                if is_highest:
+                # Push the minor branch tag (YY.XX)
+                tag_list.append(f"xowap/trafficserver:{branch}")
+                if is_overall_highest:
                     tag_list.append("xowap/trafficserver:latest")
             else:
+                # Push the patch tag
                 tag_list.append(f"xowap/trafficserver:{tag}-no-hwloc")
-                if is_highest:
+                # Push the minor branch tag
+                tag_list.append(f"xowap/trafficserver:{branch}-no-hwloc")
+                if is_overall_highest:
                     tag_list.append("xowap/trafficserver:no-hwloc")
             
             jobs.append({
@@ -239,7 +261,7 @@ def main():
                 "ngtcp2_version": job_vars["NGTCP2_VERSION"],
                 "nghttp2_version": job_vars["NGHTTP2_VERSION"],
                 "curl_version": job_vars["CURL_VERSION"],
-                "name": f"{tag} ({base})"
+                "name": f"{branch} ({base})"
             })
 
     # Cleanup the clone
