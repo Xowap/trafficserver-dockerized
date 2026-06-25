@@ -88,8 +88,8 @@ jobs:
               with:
                   push: true
                   tags: ${{ steps.suffix-tags.outputs.tags }}
-                  cache-from: type=gha,scope=${{ inputs.tag }}-${{ inputs.base }}-${{ matrix.arch }}
-                  cache-to: type=gha,mode=max,scope=${{ inputs.tag }}-${{ inputs.base }}-${{ matrix.arch }}
+                  cache-from: type=gha,scope=${{ inputs.ats_version }}-${{ inputs.base }}-${{ matrix.arch }}
+                  cache-to: type=gha,mode=max,scope=${{ inputs.ats_version }}-${{ inputs.base }}-${{ matrix.arch }}
                   build-args: |
                       BASE_IMAGE=${{ inputs.base }}
                       ATS_VERSION=${{ inputs.ats_version }}
