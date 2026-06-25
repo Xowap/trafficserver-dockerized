@@ -340,6 +340,10 @@ COPY --from=build-no-hwloc /opt /opt
 # ----------------- Stage 4: Final Stage -----------------
 FROM base-${BASE_IMAGE}
 
+# Create native 'trafficserver' system user and group (matching GID 101 / UID 100)
+RUN groupadd -g 101 trafficserver \
+    && useradd -u 100 -g trafficserver -d /run/trafficserver -s /bin/false -r trafficserver
+
 # Create compatibility symlinks and directories
 RUN rm -rf /etc/trafficserver \
     && ln -s /opt/etc/trafficserver /etc/trafficserver \
@@ -351,11 +355,11 @@ RUN rm -rf /etc/trafficserver \
     && ln -sf /opt/bin/traffic_ctl /usr/bin/traffic_ctl \
     && ln -sf /opt/bin/traffic_layout /usr/bin/traffic_layout \
     && mkdir -p /run/trafficserver \
-    && chown -R nobody:nogroup /run/trafficserver \
+    && chown -R trafficserver:trafficserver /run/trafficserver \
     && mkdir -p /opt/var/trafficserver \
-    && chown -R nobody:nogroup /opt/var/trafficserver \
+    && chown -R trafficserver:trafficserver /opt/var/trafficserver \
     && mkdir -p /opt/var/log/trafficserver \
-    && chown -R nobody:nogroup /opt/var/log/trafficserver
+    && chown -R trafficserver:trafficserver /opt/var/log/trafficserver
 
 RUN mkdir -p /opt/ats/utils \
     && ln -s /opt/ats/utils/start_ats.py /usr/local/bin/start_ats
