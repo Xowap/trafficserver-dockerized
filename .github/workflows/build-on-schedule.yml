@@ -2,7 +2,7 @@ name: Build on schedule
 
 on:
     schedule:
-        - cron: "0 */3 * * *"
+        - cron: "0 0 * * *"
     workflow_dispatch:
 
 jobs:
@@ -30,9 +30,9 @@ jobs:
                           --header 'Content-Type: application/json' \
                           --data-raw '{
                             "monitor_config": {
-                              "schedule": {"type": "crontab", "value": "0 */3 * * *"},
+                              "schedule": {"type": "crontab", "value": "0 0 * * *"},
                               "checkin_margin": 180,
-                              "max_runtime": 120,
+                              "max_runtime": 60,
                               "timezone": "UTC",
                               "failure_issue_threshold": 3,
                               "recovery_threshold": 1
