@@ -129,6 +129,125 @@ def flatten_records():
     (ETC_DIR / "records.config").write_text(config)
 
 
+def get_value(type_, value):
+    if value == 'nullptr' or value == 'NULL':
+        return None
+
+    type_upper = type_.upper()
+    if type_upper == 'FLOAT':
+        try:
+            return float(value)
+        except ValueError:
+            return value
+    elif type_upper == 'INT':
+        if value.startswith('0x') or any(value.endswith(m) for m in ('K', 'M', 'G', 'T')):
+            return str(value)
+        else:
+            try:
+                return int(value)
+            except ValueError:
+                return value
+    elif type_upper == 'STRING':
+        val_str = str(value)
+        if len(val_str) >= 2 and (
+            (val_str.startswith('"') and val_str.endswith('"')) or
+            (val_str.startswith("'") and val_str.endswith("'"))
+        ):
+            return val_str[1:-1]
+        return val_str
+    return value
+
+
+def add_object(config, var, value, type_, track_info):
+    parts = var.split('.')
+    current = config
+    for i, part in enumerate(parts[:-1]):
+        if part not in current:
+            current[part] = {}
+        elif not isinstance(current[part], dict):
+            line, rec = track_info
+            raise TrafficPatchError(
+                f"Conflict at line {line} for record '{rec}': node '{part}' is already a value, cannot be a map."
+            )
+        current = current[part]
+
+    last_part = parts[-1]
+    if last_part in current and isinstance(current[last_part], dict):
+        line, rec = track_info
+        raise TrafficPatchError(
+            f"Conflict at line {line} for record '{rec}': node '{last_part}' is already a map, cannot be a value."
+        )
+    current[last_part] = get_value(type_, value)
+
+
+def convert_records_config_to_yaml():
+    """Convert /etc/trafficserver/records.config to /etc/trafficserver/records.yaml
+    following the migration guide, and remove the legacy records.config file."""
+    records_config_path = ETC_DIR / "records.config"
+    records_yaml_path = ETC_DIR / "records.yaml"
+
+    if not records_config_path.exists():
+        return
+
+    renamed_records = {
+        'proxy.config.output.logfile': 'proxy.config.output.logfile.name',
+        'proxy.config.exec_thread.autoconfig': 'proxy.config.exec_thread.autoconfig.enabled',
+        'proxy.config.hostdb': 'proxy.config.hostdb.enabled',
+        'proxy.config.tunnel.prewarm': 'proxy.config.tunnel.prewarm.enabled',
+        'proxy.config.ssl.origin_session_cache': 'proxy.config.ssl.origin_session_cache.enabled',
+        'proxy.config.ssl.session_cache': 'proxy.config.ssl.session_cache.mode',
+        'proxy.config.ssl.TLSv1_3': 'proxy.config.ssl.TLSv1_3.enabled',
+        'proxy.config.ssl.client.TLSv1_3': 'proxy.config.ssl.client.TLSv1_3.enabled',
+        'proxy.local.incoming_ip_to_bind': 'proxy.config.incoming_ip_to_bind',
+        'proxy.local.outgoing_ip_to_bind': 'proxy.config.outgoing_ip_to_bind',
+        'proxy.local.http.parent_proxy.disable_connect_tunneling': 'proxy.config.http.parent_proxy.disable_connect_tunneling'
+    }
+
+    config = {}
+
+    try:
+        with open(records_config_path, "r") as f:
+            lines = f.readlines()
+    except Exception as e:
+        raise TrafficPatchError(f"Error reading records.config: {e}")
+
+    for idx, line in enumerate(lines):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            continue
+
+        _, name, type_, value = parts
+        value = value.rstrip('\n')
+
+        if name in renamed_records:
+            name = renamed_records[name]
+
+        if name.startswith("proxy.config."):
+            name = name[len("proxy.config."):]
+        elif name.startswith("local.config."):
+            name = name[len("local.config."):]
+
+        track_info = (idx + 1, name)
+        add_object(config, name, value, type_, track_info)
+
+    ts = {"records": config}
+
+    try:
+        with open(records_yaml_path, "w") as f:
+            yaml.safe_dump(ts, f, default_flow_style=False)
+    except Exception as e:
+        raise TrafficPatchError(f"Error writing records.yaml: {e}")
+
+    try:
+        records_config_path.unlink()
+    except Exception as e:
+        raise TrafficPatchError(f"Error removing records.config: {e}")
+
+
 def exec_ats():
     """When all is in place, we execute the traffic_server binary by replacing
     the current process. We forward all the CLI arguments to the new
@@ -138,11 +257,12 @@ def exec_ats():
 
 
 def main():
-    """The main function of the script. It resolves all templates and flattens
-    the records.config file."""
+    """The main function of the script. It resolves all templates, flattens
+    the records.config file, and converts records.config to records.yaml."""
 
     resolve_templates()
     flatten_records()
+    convert_records_config_to_yaml()
     exec_ats()
 
 
