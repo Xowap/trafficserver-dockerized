@@ -9,6 +9,48 @@ ARG NGTCP2_VERSION=v1.22.1
 ARG NGHTTP2_VERSION=v1.69.0
 ARG CURL_VERSION=curl-8_20_0
 ARG UBUNTU_VERSION=noble
+# Brotli patch release for CVE-2026-111497. Ubuntu noble still ships the
+# vulnerable 1.1.0, so we build the fixed upstream release ourselves.
+ARG BROTLI_VERSION=v1.1.1
+
+# ----------------- Stage 0: Patched Brotli (CVE-2026-111497) -----------------
+# CVE-2026-111497 is an out-of-bounds write in the Brotli decoder
+# (c/dec/decode.c) affecting every release from 1.0.3 up to and including
+# 1.2.0. It is reachable over the network through any `Content-Encoding: br`
+# payload, so it also impacts ATS itself and every other consumer of brotli in
+# this image. Ubuntu has not published a patched libbrotli1 for noble yet, so
+# we build the fixed release and install it under /usr/local, which takes
+# precedence over /usr/lib/<triplet> in the dynamic loader search path.
+FROM ubuntu:${UBUNTU_VERSION} AS brotli
+
+ARG BROTLI_VERSION
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update \
+ && apt install --no-install-recommends --yes \
+    ca-certificates \
+    build-essential \
+    cmake \
+    ninja-build \
+    git \
+ && apt clean --yes \
+ && git clone --depth 1 -b ${BROTLI_VERSION} https://github.com/google/brotli.git \
+ && cd brotli \
+ && cmake \
+     -B build \
+     -G Ninja \
+     -DCMAKE_BUILD_TYPE=Release \
+     -DBUILD_SHARED_LIBS=ON \
+     -DCMAKE_INSTALL_PREFIX=/usr/local \
+ && cmake --build build --parallel $(nproc) \
+ && cmake --install build \
+ && cd .. \
+ && rm -rf brotli \
+ # Refuse to produce a "patched" layer that is still vulnerable.
+ && installed="$(basename "$(readlink -f /usr/local/lib/libbrotlidec.so.1)" | sed 's/^libbrotlidec\.so\.//')" \
+ && dpkg --compare-versions "${installed}" ge 1.1.1 \
+ && echo "Built patched brotli decoder: ${installed}"
 
 # ----------------- Stage 1: Build Setup (shared by both variants) -----------------
 FROM ubuntu:${UBUNTU_VERSION} AS build-setup
@@ -31,6 +73,10 @@ RUN apt update \
     ca-certificates \
     clang-${LLVM_VERSION} \
     libc++-${LLVM_VERSION}-dev \
+    # Provides clang-scan-deps, required by CMake >= 3.28 when a subproject
+    # raises its policy level to CMP0155 NEW (the yaml-cpp bundled by ATS
+    # 10.1.3+ does exactly that, and the build then needs CXX module scanning).
+    clang-tools-${LLVM_VERSION} \
     cmake \
     ninja-build \
     libc-ares-dev \
@@ -83,6 +129,14 @@ RUN if [ `uname -m` = "arm64" -o `uname -m` = "aarch64" ]; then echo "arm64" > /
 ENV CC=clang-${LLVM_VERSION}
 ENV CXX=clang++-${LLVM_VERSION}
 ENV GO_BINARY_PATH=${BASE}/go/bin/go
+
+# Build against the patched brotli (CVE-2026-111497) rather than the version
+# shipped by Ubuntu, so that what we link against is what we ship. Note that the
+# directory form of COPY is required here: a wildcard over the individual files
+# would dereference the SONAME symlinks and break dynamic linking.
+COPY --from=brotli /usr/local/lib /usr/local/lib
+COPY --from=brotli /usr/local/include/brotli /usr/local/include/brotli
+RUN ldconfig
 
 # Build BoringSSL
 RUN git clone https://boringssl.googlesource.com/boringssl \
@@ -218,6 +272,9 @@ RUN git clone --depth 1 -b ${ATS_VERSION} https://github.com/apache/trafficserve
      -Strafficserver \
      -Bbuild \
      -GNinja \
+     # ATS has no C++ modules; disabling the scan keeps the build independent
+     # of clang-scan-deps (upstream does the same in its newest Dockerfile).
+     -DCMAKE_CXX_SCAN_FOR_MODULES=OFF \
      -DCMAKE_INSTALL_PREFIX=${BASE} \
      -DCMAKE_BUILD_TYPE=Release \
      -DBUILD_TESTING=OFF \
@@ -250,6 +307,9 @@ RUN git clone --depth 1 -b ${ATS_VERSION} https://github.com/apache/trafficserve
      -Strafficserver \
      -Bbuild \
      -GNinja \
+     # ATS has no C++ modules; disabling the scan keeps the build independent
+     # of clang-scan-deps (upstream does the same in its newest Dockerfile).
+     -DCMAKE_CXX_SCAN_FOR_MODULES=OFF \
      -DCMAKE_INSTALL_PREFIX=${BASE} \
      -DCMAKE_BUILD_TYPE=Release \
      -DBUILD_TESTING=OFF \
@@ -341,6 +401,19 @@ COPY --from=build-no-hwloc /opt /opt
 
 # ----------------- Stage 4: Final Stage -----------------
 FROM base-${BASE_IMAGE}
+
+# --- Security: CVE-2026-111497 (Brotli decoder out-of-bounds write) -----------
+# Ubuntu noble ships the vulnerable brotli 1.1.0. Drop it and use the patched
+# build instead, so that every consumer in the image (ATS, ImageMagick, ...)
+# decompresses `Content-Encoding: br` with the fixed decoder. COPY of the
+# directory (rather than of a wildcard) keeps the SONAME symlinks intact.
+COPY --from=brotli /usr/local/lib /usr/local/lib
+RUN rm -f /usr/lib/*-linux-gnu/libbrotli*.so* \
+    && ldconfig \
+    && installed="$(basename "$(readlink -f /usr/local/lib/libbrotlidec.so.1)" | sed 's/^libbrotlidec\.so\.//')" \
+    && dpkg --compare-versions "${installed}" ge 1.1.1 \
+    && echo "Patched brotli decoder in use: ${installed}" \
+    && ldconfig -p | grep libbrotlidec
 
 # Create native 'trafficserver' system user and group (matching GID 101 / UID 100)
 RUN groupadd -g 101 trafficserver \

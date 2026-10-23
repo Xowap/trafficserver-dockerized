@@ -16,6 +16,31 @@ than the one you'll find in Debian stable at the moment of the build.
   which is sadly a requirement for some cloud environments like the
   DigitalOcean app platform
 
+## Security
+
+The images are patched against
+[CVE-2026-111497](https://nvd.nist.gov/vuln/detail/CVE-2026-111497), an
+out-of-bounds write in the Google Brotli decoder that a remote attacker can
+trigger with a crafted `Content-Encoding: br` payload. It affects every Brotli
+release from `1.0.3` up to and including `1.2.0`.
+
+Ubuntu noble still ships the vulnerable `libbrotli1` `1.1.0`, and no patched
+package has been published for it yet. The Dockerfile therefore builds the fixed
+upstream release (pinned by the `BROTLI_VERSION` build argument, currently
+`v1.1.1`), installs it into `/usr/local` and deletes the vulnerable copy from
+`/usr/lib/x86_64-linux-gnu`, so that every consumer in the image (ATS,
+ImageMagick, ...) decodes Brotli with the patched library. The build fails if
+the resulting library is older than `1.1.1`.
+
+Two caveats:
+
+- Image scanners that report on the installed packages rather than on the files
+  will keep flagging `libbrotli1` until Ubuntu publishes the security update,
+  because the Debian package metadata still describes `1.1.0`. The code that is
+  actually loaded is the patched `1.1.1`.
+- Once Ubuntu ships a fixed `libbrotli1` for noble, this workaround can be
+  dropped in favour of the packaged library.
+
 ## Environment Interpolation
 
 First of all, any file in `/etc/trafficserver` can be fed with environment
