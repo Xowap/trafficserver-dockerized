@@ -415,9 +415,13 @@ RUN rm -f /usr/lib/*-linux-gnu/libbrotli*.so* \
     && echo "Patched brotli decoder in use: ${installed}" \
     && ldconfig -p | grep libbrotlidec
 
-# Create native 'trafficserver' system user and group (matching GID 101 / UID 100)
+# Create native 'trafficserver' system user and group (matching GID 101 / UID 100).
+# ATS keeps running as `nobody` unless proxy.config.admin.user_id says otherwise,
+# so add that user to the group as well: the runtime directories below are group
+# writable, which makes the image work out of the box with either user.
 RUN groupadd -g 101 trafficserver \
-    && useradd -u 100 -g trafficserver -d /run/trafficserver -s /bin/false -r trafficserver
+    && useradd -u 100 -g trafficserver -d /run/trafficserver -s /bin/false -r trafficserver \
+    && usermod -aG trafficserver nobody
 
 # Create compatibility symlinks and directories
 RUN rm -rf /etc/trafficserver \
@@ -434,7 +438,8 @@ RUN rm -rf /etc/trafficserver \
     && mkdir -p /opt/var/trafficserver \
     && chown -R trafficserver:trafficserver /opt/var/trafficserver \
     && mkdir -p /opt/var/log/trafficserver \
-    && chown -R trafficserver:trafficserver /opt/var/log/trafficserver
+    && chown -R trafficserver:trafficserver /opt/var/log/trafficserver \
+    && chmod 0775 /run/trafficserver /opt/var/trafficserver /opt/var/log/trafficserver
 
 RUN mkdir -p /opt/ats/utils \
     && ln -s /opt/ats/utils/start_ats.py /usr/local/bin/start_ats

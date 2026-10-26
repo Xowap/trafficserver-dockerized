@@ -88,9 +88,11 @@ proxy:
             pristine_host_hdr: true
 ```
 
-> A highlight here: it's expected that you're going to have
-> `proxy.config.admin.user_id` set to `trafficserver`, so if you don't you
-> probably will run into trouble.
+> A highlight here: the image ships a `trafficserver` user and makes its runtime
+> directories writable by that user. It also makes them group writable for
+> `nobody`, the user ATS falls back to when `proxy.config.admin.user_id` is not
+> set, so the container starts with or without this record. Setting it to
+> `trafficserver` is still the recommended way to run as a dedicated user.
 
 This feature is compatible with the previous one. You could for example have
 a `records.config.tpl.yaml` file which would first be transformed into a
